@@ -6,23 +6,18 @@ import { sleep } from "../src/utils";
 import { createUdpTransport } from "../src/transport";
 
 (async () => {
-  const transport = createUdpTransport(createSocket("udp4"), {
-    port: 5678,
-    address: "127.0.0.1",
-  });
+  const socket = createSocket("udp4");
+  socket.bind(5678);
+  const transport = createUdpTransport(socket);
 
-  const sctp = SCTP.client(transport);
+  const sctp = SCTP.server(transport);
   sctp.onRecieve = (...args) => {
     console.log(args[2].toString());
     console.log(args);
   };
   await sctp.start(5000);
   await waitForOutcome(sctp);
-  let sec = 0;
-  setInterval(
-    () => sctp.send(0, WEBRTC_STRING, Buffer.from("ping " + sec++)),
-    1000
-  );
+  setInterval(() => sctp.send(0, WEBRTC_STRING, Buffer.from("pong")), 1000);
 })();
 
 async function waitForOutcome(sctp: SCTP) {
