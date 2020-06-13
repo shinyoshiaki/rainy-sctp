@@ -1,3 +1,30 @@
+// ID Value    Chunk Type
+// -----       ----------
+// 0          - Payload Data (DATA)
+// 1          - Initiation (INIT)
+// 2          - Initiation Acknowledgement (INIT ACK)
+// 3          - Selective Acknowledgement (SACK)
+// 4          - Heartbeat Request (HEARTBEAT)
+// 5          - Heartbeat Acknowledgement (HEARTBEAT ACK)
+// 6          - Abort (ABORT)
+// 7          - Shutdown (SHUTDOWN)
+// 8          - Shutdown Acknowledgement (SHUTDOWN ACK)
+// 9          - Operation Error (ERROR)
+// 10         - State Cookie (COOKIE ECHO)
+// 11         - Cookie Acknowledgement (COOKIE ACK)
+// 12         - Reserved for Explicit Congestion Notification Echo
+//              (ECNE)
+// 13         - Reserved for Congestion Window Reduced (CWR)
+// 14         - Shutdown Complete (SHUTDOWN COMPLETE)
+// 15 to 62   - available
+// 63         - reserved for IETF-defined Chunk Extensions
+// 64 to 126  - available
+// 127        - reserved for IETF-defined Chunk Extensions
+// 128 to 190 - available
+// 191        - reserved for IETF-defined Chunk Extensions
+// 192 to 254 - available
+// 255        - reserved for IETF-defined Chunk Extensions
+
 import { jspack } from "jspack";
 const crc32c = require("turbo-crc32/crc32c");
 

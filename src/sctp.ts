@@ -545,7 +545,10 @@ export class SCTP {
     );
   }
 
-  private async receive(streamId: number, ppId: number, data: Buffer) {}
+  onRecieve?: (streamId: number, ppId: number, data: Buffer) => void;
+  private async receive(streamId: number, ppId: number, data: Buffer) {
+    if (this.onRecieve) this.onRecieve(streamId, ppId, data);
+  }
 
   private getInboundStream(streamId: number) {
     if (!this.inboundStreams[streamId]) {
@@ -584,7 +587,7 @@ export class SCTP {
     maxRetransmits: number | undefined = undefined,
     ordered = true
   ) {
-    const streamSeq = ordered ? this.outboundStreamSeq[streamId] : 0;
+    const streamSeq = ordered ? this.outboundStreamSeq[streamId] || 0 : 0;
 
     const fragments = Math.ceil(userData.length / USERDATA_MAX_LENGTH);
     let pos = 0;
@@ -594,13 +597,16 @@ export class SCTP {
       chunk.flags = 0;
       if (!ordered) {
         chunk.flags = SCTP_DATA_UNORDERED;
+      } else {
+        if (fragments === 1) {
+          chunk.flags = 0x03;
+        } else if (fragment === 0) {
+          chunk.flags = SCTP_DATA_FIRST_FRAG;
+        } else if (fragment === fragments - 1) {
+          chunk.flags = SCTP_DATA_LAST_FRAG;
+        }
       }
-      if (fragment === 0) {
-        chunk.flags = chunk.flags || SCTP_DATA_FIRST_FRAG;
-      }
-      if (fragment === fragments - 1) {
-        chunk.flags = chunk.flags || SCTP_DATA_LAST_FRAG;
-      }
+
       chunk.tsn = this.localTsn;
       chunk.streamId = streamId;
       chunk.streamSeq = streamSeq;
