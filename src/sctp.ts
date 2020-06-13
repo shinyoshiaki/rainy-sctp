@@ -1,15 +1,7 @@
 import { range } from "lodash";
-import { Socket } from "dgram";
 import { SCTP_STATE } from "./const";
 import { jspack } from "jspack";
-import {
-  generateUUID,
-  random32,
-  uint32Gte,
-  uint32Gt,
-  enumerate,
-  uint16Add,
-} from "./utils";
+import { random32, uint32Gte, uint32Gt, enumerate, uint16Add } from "./utils";
 
 import {
   Chunk,
@@ -66,21 +58,16 @@ const SCTP_CAUSE_INVALID_STREAM = 0x0001;
 const SCTP_CAUSE_STALE_COOKIE = 0x0003;
 
 export class SCTP {
-  uuid = generateUUID();
-  mid?: string;
-  bundled = false;
-
   associationState = SCTP_STATE.CLOSED;
-  private started = false;
-  private state = "new";
+  started = false;
+  state = "new";
   private hmacKey = randomBytes(16);
-  private dataChannelId?: number;
 
   private localPartialReliability = true;
   private localPort = this.port;
   private localVerificationTag = random32();
 
-  private remotePartialReliability = true;
+  remotePartialReliability = true;
   private remotePort?: number;
   private remoteVerificationTag = 0;
 
@@ -123,10 +110,9 @@ export class SCTP {
   private cwnd = 3 * USERDATA_MAX_LENGTH; // Congestion Window
 
   // # reconfiguration
-  private reconfig_queue: number[] = [];
-  private reconfig_request?: unknown;
-  private reconfig_request_seq = this.localTsn;
-  private reconfig_response_seq = 0;
+
+  reconfig_request_seq = this.localTsn;
+  reconfig_response_seq = 0;
 
   constructor(public transport: Transport, public port = 5000) {}
 
@@ -353,6 +339,7 @@ export class SCTP {
       if (k === SCTP_PRSCTP_SUPPORTED) {
         this.remotePartialReliability = true;
       } else if (SCTP_SUPPORTED_CHUNK_EXT) {
+        // todo
         // this.reomtee
       }
     }
@@ -869,12 +856,6 @@ export class SCTP {
       this.started = true;
       this.state = "connecting";
       this.remotePort = remotePort;
-
-      if (this.isServer) {
-        this.dataChannelId = 0;
-      } else {
-        this.dataChannelId = 1;
-      }
 
       this.transport.onData = (buf) => {
         this.handleData(buf);
