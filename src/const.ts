@@ -16,7 +16,7 @@ export const WEBRTC_BINARY = 53;
 export const WEBRTC_STRING_EMPTY = 56;
 export const WEBRTC_BINARY_EMPTY = 57;
 
-export enum State {
+export enum SCTP_STATE {
   CLOSED = 1,
   COOKIE_WAIT = 2,
   COOKIE_ECHOED = 3,

@@ -1,16 +1,6 @@
 import { range } from "lodash";
 import { Socket } from "dgram";
-import {
-  DATA_CHANNEL_RELIABLE,
-  DATA_CHANNEL_OPEN,
-  WEBRTC_DCEP,
-  State,
-  DATA_CHANNEL_ACK,
-  WEBRTC_STRING,
-  WEBRTC_STRING_EMPTY,
-  WEBRTC_BINARY,
-  WEBRTC_BINARY_EMPTY,
-} from "./const";
+import { SCTP_STATE } from "./const";
 import { jspack } from "jspack";
 import {
   generateUUID,
@@ -41,8 +31,8 @@ import {
   ErrorChunk,
   CookieEchoChunk,
 } from "./chunk";
-import { Subject } from "rxjs";
-import { Hmac, createHmac, randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
+import { Transport } from "./transport";
 
 // # local constants
 const COOKIE_LENGTH = 24;
@@ -51,9 +41,9 @@ const MAX_STREAMS = 65535;
 const USERDATA_MAX_LENGTH = 1200;
 
 // # protocol constants
-export const SCTP_DATA_LAST_FRAG = 0x01;
-export const SCTP_DATA_FIRST_FRAG = 0x02;
-export const SCTP_DATA_UNORDERED = 0x04;
+const SCTP_DATA_LAST_FRAG = 0x01;
+const SCTP_DATA_FIRST_FRAG = 0x02;
+const SCTP_DATA_UNORDERED = 0x04;
 const SCTP_MAX_ASSOCIATION_RETRANS = 10;
 const SCTP_MAX_BURST = 4;
 const SCTP_MAX_INIT_RETRANS = 8;
@@ -75,12 +65,12 @@ const SCTP_PRSCTP_SUPPORTED = 0xc000;
 const SCTP_CAUSE_INVALID_STREAM = 0x0001;
 const SCTP_CAUSE_STALE_COOKIE = 0x0003;
 
-export class Sctp {
+export class SCTP {
   uuid = generateUUID();
   mid?: string;
   bundled = false;
 
-  associationState = State.CLOSED;
+  associationState = SCTP_STATE.CLOSED;
   private started = false;
   private state = "new";
   private hmacKey = randomBytes(16);
@@ -138,26 +128,17 @@ export class Sctp {
   private reconfig_request_seq = this.localTsn;
   private reconfig_response_seq = 0;
 
-  constructor(
-    public transport: { socket: Socket; port: number; address: string },
-    public port = 5000
-  ) {}
+  constructor(public transport: Transport, public port = 5000) {}
 
   isServer = true;
-  static client(
-    transport: { socket: Socket; port: number; address: string },
-    port = 5000
-  ) {
-    const sctp = new Sctp(transport, port);
+  static client(transport: Transport, port = 5000) {
+    const sctp = new SCTP(transport, port);
     sctp.isServer = false;
     return sctp;
   }
 
-  static server(
-    transport: { socket: Socket; port: number; address: string },
-    port = 5000
-  ) {
-    const sctp = new Sctp(transport, port);
+  static server(transport: Transport, port = 5000) {
+    const sctp = new SCTP(transport, port);
     sctp.isServer = true;
     return sctp;
   }
@@ -231,16 +212,16 @@ export class Sctp {
         }
         break;
       case AbortChunk.type:
-        this.setState(State.CLOSED);
+        this.setState(SCTP_STATE.CLOSED);
         break;
       case ShutdownChunk.type:
         {
           this.t2Cancel();
-          this.setState(State.SHUTDOWN_RECEIVED);
+          this.setState(SCTP_STATE.SHUTDOWN_RECEIVED);
           const ack = new ShutdownAckChunk();
           await this.sendChunk(ack);
           this.t2Start(ack);
-          this.setState(State.SHUTDOWN_SENT);
+          this.setState(SCTP_STATE.SHUTDOWN_SENT);
         }
         break;
       // todo
@@ -313,11 +294,11 @@ export class Sctp {
 
           const ack = new CookieAckChunk();
           await this.sendChunk(ack);
-          this.setState(State.ESTABLISHED);
+          this.setState(SCTP_STATE.ESTABLISHED);
         }
         break;
       case InitAckChunk.type:
-        if (this.associationState === State.COOKIE_WAIT) {
+        if (this.associationState === SCTP_STATE.COOKIE_WAIT) {
           const data = chunk as InitAckChunk;
           this.t1Cancel();
           this.lastReceivedTsn = tsnMinusOne(data.initialTsn);
@@ -345,23 +326,23 @@ export class Sctp {
           await this.sendChunk(echo);
 
           this.t1Start(echo);
-          this.setState(State.COOKIE_ECHOED);
+          this.setState(SCTP_STATE.COOKIE_ECHOED);
         }
         break;
       case CookieAckChunk.type:
-        if (this.associationState === State.COOKIE_ECHOED) {
+        if (this.associationState === SCTP_STATE.COOKIE_ECHOED) {
           this.t1Cancel();
-          this.setState(State.ESTABLISHED);
+          this.setState(SCTP_STATE.ESTABLISHED);
         }
         break;
       case ErrorChunk.type:
         if (
-          [State.COOKIE_WAIT, State.COOKIE_ECHOED].indexOf(
+          [SCTP_STATE.COOKIE_WAIT, SCTP_STATE.COOKIE_ECHOED].indexOf(
             this.associationState
           )
         ) {
           this.t1Cancel();
-          this.setState(State.CLOSED);
+          this.setState(SCTP_STATE.CLOSED);
         }
         break;
     }
@@ -731,7 +712,8 @@ export class Sctp {
   private t1Expired = async () => {
     this.t1Failures++;
     this.t1Handle = undefined;
-    if (this.t1Failures > SCTP_MAX_INIT_RETRANS) this.setState(State.CLOSED);
+    if (this.t1Failures > SCTP_MAX_INIT_RETRANS)
+      this.setState(SCTP_STATE.CLOSED);
     else {
       this.sendChunk(this.t1Chunk!);
       this.t1Handle = setTimeout(this.t1Expired, this.rto);
@@ -757,7 +739,7 @@ export class Sctp {
     this.t2Failures++;
     this.t2Handle = undefined;
     if (this.t2Failures > SCTP_MAX_ASSOCIATION_RETRANS)
-      this.setState(State.CLOSED);
+      this.setState(SCTP_STATE.CLOSED);
     else {
       this.sendChunk(this.t2Chunk!);
       this.t2Handle = setTimeout(this.t2Expired, this.rto);
@@ -888,6 +870,9 @@ export class Sctp {
         this.dataChannelId = 1;
       }
 
+      this.transport.onData = (buf) => {
+        this.handleData(buf);
+      };
       if (!this.isServer) {
         await this.init();
       }
@@ -906,7 +891,7 @@ export class Sctp {
 
     // # start T1 timer and enter COOKIE-WAIT state
     this.t1Start(chunk);
-    this.setState(State.COOKIE_WAIT);
+    this.setState(SCTP_STATE.COOKIE_WAIT);
   }
 
   private setExtensions(params: [number, Buffer][]) {
@@ -922,7 +907,7 @@ export class Sctp {
 
   private async sendChunk(chunk: Chunk) {
     if (!this.remotePort) throw new Error();
-    this.transport.socket.send(
+    this.transport.send(
       serializePacket(
         this.localPort,
         this.remotePort,
@@ -932,13 +917,13 @@ export class Sctp {
     );
   }
 
-  private setState(state: State) {
+  private setState(state: SCTP_STATE) {
     if (state != this.associationState) {
       this.associationState = state;
     }
-    if (state === State.ESTABLISHED) {
+    if (state === SCTP_STATE.ESTABLISHED) {
       this.state = "connected";
-    } else if (state === State.CLOSED) {
+    } else if (state === SCTP_STATE.CLOSED) {
       // todo
       // this.t1Cancel();
       // this.t2Cancel();
