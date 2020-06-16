@@ -1,9 +1,10 @@
 import { createSocket } from "dgram";
 import { createUdpTransport } from "../src/transport";
-import { SCTP } from "../src/sctp";
+
 import { range } from "lodash";
-import { SCTP_STATE, WEBRTC_STRING } from "../src/const";
+
 import { sleep } from "../src/utils";
+import { SCTP, WEBRTC_PPID, SCTP_STATE } from "../src";
 
 test("udp", async (done) => {
   const port = 5555;
@@ -13,7 +14,7 @@ test("udp", async (done) => {
   const server = SCTP.server(createUdpTransport(socket));
   server.onRecieve = (_, __, data) => {
     expect(data.toString()).toBe("ping");
-    server.send(0, WEBRTC_STRING, Buffer.from("pong"));
+    server.send(0, WEBRTC_PPID.STRING, Buffer.from("pong"));
   };
 
   const client = SCTP.client(
@@ -30,7 +31,7 @@ test("udp", async (done) => {
   await Promise.all([client.start(5000), server.start(5000)]);
   await Promise.all([waitForOutcome(client), waitForOutcome(server)]);
 
-  client.send(0, WEBRTC_STRING, Buffer.from("ping"));
+  client.send(0, WEBRTC_PPID.STRING, Buffer.from("ping"));
 });
 
 async function waitForOutcome(sctp: SCTP) {

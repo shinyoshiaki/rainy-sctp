@@ -25,6 +25,7 @@ import {
 } from "./chunk";
 import { createHmac, randomBytes } from "crypto";
 import { Transport } from "./transport";
+import { Subject } from "rxjs";
 
 // # local constants
 const COOKIE_LENGTH = 24;
@@ -41,7 +42,7 @@ const SCTP_MAX_BURST = 4;
 const SCTP_MAX_INIT_RETRANS = 8;
 const SCTP_RTO_ALPHA = 1 / 8;
 const SCTP_RTO_BETA = 1 / 4;
-const SCTP_RTO_INITIAL = 3.0;
+const SCTP_RTO_INITIAL = 3 * 1000;
 const SCTP_RTO_MIN = 1;
 const SCTP_RTO_MAX = 60;
 const SCTP_TSN_MODULO = 2 ** 32;
@@ -58,6 +59,7 @@ const SCTP_CAUSE_INVALID_STREAM = 0x0001;
 const SCTP_CAUSE_STALE_COOKIE = 0x0003;
 
 export class SCTP {
+  connected = new Subject();
   associationState = SCTP_STATE.CLOSED;
   started = false;
   state = "new";
@@ -86,7 +88,7 @@ export class SCTP {
   private fastRecoveryTransmit = false;
   private forwardTsnChunk?: ForwardTsnChunk;
   private flightSize = 0;
-  private outboundQueue: DataChunk[] = [];
+  outboundQueue: DataChunk[] = [];
   private outboundStreamSeq: { [key: number]: number } = {};
   private outboundStreamsCount = MAX_STREAMS;
   private localTsn = random32();
@@ -114,7 +116,11 @@ export class SCTP {
   reconfig_request_seq = this.localTsn;
   reconfig_response_seq = 0;
 
-  constructor(public transport: Transport, public port = 5000) {}
+  constructor(public transport: Transport, public port = 5000) {
+    this.transport.onData = (buf) => {
+      this.handleData(buf);
+    };
+  }
 
   isServer = true;
   static client(transport: Transport, port = 5000) {
@@ -262,7 +268,7 @@ export class SCTP {
             cookie?.length != COOKIE_LENGTH ||
             !cookie.slice(4).equals(digest)
           ) {
-            console.log("x State cookie is invalid");
+            // console.log("x State cookie is invalid");
             return;
           }
 
@@ -705,9 +711,9 @@ export class SCTP {
   private t1Expired = async () => {
     this.t1Failures++;
     this.t1Handle = undefined;
-    if (this.t1Failures > SCTP_MAX_INIT_RETRANS)
+    if (this.t1Failures > SCTP_MAX_INIT_RETRANS) {
       this.setState(SCTP_STATE.CLOSED);
-    else {
+    } else {
       this.sendChunk(this.t1Chunk!);
       this.t1Handle = setTimeout(this.t1Expired, this.rto);
     }
@@ -731,9 +737,9 @@ export class SCTP {
   private t2Expired = () => {
     this.t2Failures++;
     this.t2Handle = undefined;
-    if (this.t2Failures > SCTP_MAX_ASSOCIATION_RETRANS)
+    if (this.t2Failures > SCTP_MAX_ASSOCIATION_RETRANS) {
       this.setState(SCTP_STATE.CLOSED);
-    else {
+    } else {
       this.sendChunk(this.t2Chunk!);
       this.t2Handle = setTimeout(this.t2Expired, this.rto);
     }
@@ -857,9 +863,6 @@ export class SCTP {
       this.state = "connecting";
       this.remotePort = remotePort;
 
-      this.transport.onData = (buf) => {
-        this.handleData(buf);
-      };
       if (!this.isServer) {
         await this.init();
       }
@@ -893,7 +896,7 @@ export class SCTP {
   }
 
   private async sendChunk(chunk: Chunk) {
-    if (!this.remotePort) throw new Error();
+    if (this.remotePort === undefined) throw new Error("invalid remote port");
     this.transport.send(
       serializePacket(
         this.localPort,
@@ -910,6 +913,7 @@ export class SCTP {
     }
     if (state === SCTP_STATE.ESTABLISHED) {
       this.state = "connected";
+      this.connected.next();
     } else if (state === SCTP_STATE.CLOSED) {
       // todo
       // this.t1Cancel();

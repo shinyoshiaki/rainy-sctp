@@ -1,9 +1,9 @@
-import { SCTP } from "../src/sctp";
 import { createSocket } from "dgram";
-import { SCTP_STATE, WEBRTC_STRING } from "../src/const";
+
 import { range } from "lodash";
 import { sleep } from "../src/utils";
 import { createUdpTransport } from "../src/transport";
+import { SCTP, WEBRTC_PPID, SCTP_STATE } from "../src";
 
 (async () => {
   const transport = createUdpTransport(createSocket("udp4"), {
@@ -20,7 +20,7 @@ import { createUdpTransport } from "../src/transport";
   await waitForOutcome(sctp);
   let sec = 0;
   setInterval(
-    () => sctp.send(0, WEBRTC_STRING, Buffer.from("ping " + sec++)),
+    () => sctp.send(0, WEBRTC_PPID.STRING, Buffer.from("ping " + sec++)),
     1000
   );
 })();
