@@ -1,7 +1,7 @@
 import { createSocket } from "dgram";
 
 import { range } from "lodash";
-import { sleep } from "../src/utils";
+import { sleep } from "../src/helper";
 import { createUdpTransport } from "../src/transport";
 import { SCTP, WEBRTC_PPID, SCTP_STATE } from "../src";
 

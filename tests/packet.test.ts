@@ -209,7 +209,7 @@ describe("SctpPacketTest", () => {
 
     const paramData = chunk.params[0][1];
     const param = StreamResetResponseParam.parse(paramData);
-    expect(param.requestSequence).toBe(2438143828);
+    expect(param.responseSequence).toBe(2438143828);
     expect(param.result).toBe(1);
     expect(param.bytes).toEqual(paramData);
   });
