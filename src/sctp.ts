@@ -42,15 +42,17 @@ const MAX_STREAMS = 65535;
 const USERDATA_MAX_LENGTH = 1200;
 
 // # protocol constants
+const SCTP_CAUSE_STALE_COOKIE = 0x0003;
+
 const SCTP_DATA_LAST_FRAG = 0x01;
 const SCTP_DATA_FIRST_FRAG = 0x02;
 const SCTP_DATA_UNORDERED = 0x04;
+
 const SCTP_MAX_ASSOCIATION_RETRANS = 10;
-const SCTP_MAX_BURST = 4;
 const SCTP_MAX_INIT_RETRANS = 8;
 const SCTP_RTO_ALPHA = 1 / 8;
 const SCTP_RTO_BETA = 1 / 4;
-const SCTP_RTO_INITIAL = 3 * 1000;
+const SCTP_RTO_INITIAL = 3;
 const SCTP_RTO_MIN = 1;
 const SCTP_RTO_MAX = 60;
 const SCTP_TSN_MODULO = 2 ** 32;
@@ -59,14 +61,8 @@ const RECONFIG_MAX_STREAMS = 135;
 
 // # parameters
 const SCTP_STATE_COOKIE = 0x0007;
-const SCTP_STR_RESET_OUT_REQUEST = 0x000d;
-const SCTP_STR_RESET_RESPONSE = 0x0010;
-const SCTP_STR_RESET_ADD_OUT_STREAMS = 0x0011;
 const SCTP_SUPPORTED_CHUNK_EXT = 0x8008; //32778
 const SCTP_PRSCTP_SUPPORTED = 0xc000; //49152
-
-const SCTP_CAUSE_INVALID_STREAM = 0x0001;
-const SCTP_CAUSE_STALE_COOKIE = 0x0003;
 
 const SCTPConnectionStates = [
   "new",
@@ -85,6 +81,8 @@ export class SCTP {
   started = false;
   state: SCTPConnectionState = "new";
   private hmacKey = randomBytes(16);
+  isServer = true;
+
   private localPartialReliability = true;
   private localPort = this.port;
   private localVerificationTag = random32();
@@ -99,12 +97,13 @@ export class SCTP {
   private inboundStreams: { [key: number]: InboundStream } = {};
   _inboundStreamsCount = 0;
   _inboundStreamsMax = MAX_STREAMS;
-  private sackNeeded = false;
   private lastReceivedTsn?: number; // Transmission Sequence Number
   private sackDuplicates: number[] = [];
   private sackMisOrdered = new Set<number>();
+  private sackNeeded = false;
 
   // # outbound
+  private cwnd = 3 * USERDATA_MAX_LENGTH; // Congestion Window
   private fastRecoveryExit?: number;
   private fastRecoveryTransmit = false;
   private forwardTsnChunk?: ForwardTsnChunk;
@@ -118,6 +117,17 @@ export class SCTP {
   private partialBytesAcked = 0;
   private sentQueue: DataChunk[] = [];
 
+  // # reconfiguration
+
+  reconfigRequestSeq = this.localTsn;
+  reconfigResponseSeq = 0;
+  reconfigRequest?: StreamResetOutgoingParam;
+  reconfigQueue: number[] = [];
+
+  // rtt calculation
+  private srtt?: number;
+  private rttvar?: number;
+
   // timers
   private rto = SCTP_RTO_INITIAL;
   private t1Handle?: any;
@@ -130,16 +140,6 @@ export class SCTP {
 
   // etc
   private ssthresh?: number; // slow start threshold
-  private cwnd = 3 * USERDATA_MAX_LENGTH; // Congestion Window
-
-  // # reconfiguration
-
-  reconfigRequestSeq = this.localTsn;
-  reconfigResponseSeq = 0;
-  reconfigRequest?: StreamResetOutgoingParam;
-  reconfigQueue: number[] = [];
-
-  isServer = true;
 
   constructor(public transport: Transport, public port = 5000) {
     this.transport.onData = (buf) => {
@@ -151,7 +151,6 @@ export class SCTP {
     if (this._inboundStreamsCount > 0)
       return Math.min(this._inboundStreamsCount, this._outboundStreamsCount);
   }
-
   static client(transport: Transport, port = 5000) {
     const sctp = new SCTP(transport, port);
     sctp.isServer = false;
@@ -215,6 +214,7 @@ export class SCTP {
   }
 
   private receiveChunk(chunk: Chunk) {
+    console.log("chunk.type", this.isServer ? "server" : "client", chunk.type);
     switch (chunk.type) {
       case DataChunk.type:
         this.receiveDataChunk(chunk as DataChunk);
@@ -602,8 +602,6 @@ export class SCTP {
     });
   }
 
-  private srtt?: number;
-  private rttvar?: number;
   private updateRto(R: number) {
     if (!this.srtt) {
       this.rttvar = R / 2;
@@ -832,7 +830,7 @@ export class SCTP {
       this.setState(SCTP_STATE.CLOSED);
     } else {
       this.sendChunk(this.t1Chunk!);
-      this.t1Handle = setTimeout(this.t1Expired, this.rto);
+      this.t1Handle = setTimeout(this.t1Expired, this.rto * 1000);
     }
   };
 
@@ -840,7 +838,7 @@ export class SCTP {
     if (this.t1Handle) throw new Error();
     this.t1Chunk = chunk;
     this.t1Failures = 0;
-    this.t1Handle = setTimeout(this.t1Expired, this.rto);
+    this.t1Handle = setTimeout(this.t1Expired, this.rto * 1000);
   }
 
   private t2Cancel() {
@@ -858,7 +856,7 @@ export class SCTP {
       this.setState(SCTP_STATE.CLOSED);
     } else {
       this.sendChunk(this.t2Chunk!);
-      this.t2Handle = setTimeout(this.t2Expired, this.rto);
+      this.t2Handle = setTimeout(this.t2Expired, this.rto * 1000);
     }
   };
 
@@ -866,7 +864,7 @@ export class SCTP {
     if (this.t2Handle) throw new Error();
     this.t2Chunk = chunk;
     this.t2Failures = 0;
-    this.t2Handle = setTimeout(this.t2Expired, this.rto);
+    this.t2Handle = setTimeout(this.t2Expired, this.rto * 1000);
   }
 
   private t3Expired = () => {
@@ -899,12 +897,12 @@ export class SCTP {
       clearTimeout(this.t3Handle);
       this.t3Handle = undefined;
     }
-    this.t3Handle = setTimeout(this.t3Expired, this.rto);
+    this.t3Handle = setTimeout(this.t3Expired, this.rto * 1000);
   }
 
   private t3Start() {
     if (this.t3Handle) throw new Error();
-    this.t3Handle = setTimeout(this.t3Expired, this.rto);
+    this.t3Handle = setTimeout(this.t3Expired, this.rto * 1000);
   }
 
   private t3Cancel() {
@@ -987,17 +985,17 @@ export class SCTP {
   }
 
   private init() {
-    const chunk = new InitChunk();
-    chunk.initiateTag = this.localVerificationTag;
-    chunk.advertisedRwnd = this.advertisedRwnd;
-    chunk.outboundStreams = this._outboundStreamsCount;
-    chunk.inboundStreams = this._inboundStreamsMax;
-    chunk.initialTsn = this.localTsn;
-    this.setExtensions(chunk.params);
-    this.sendChunk(chunk);
+    const init = new InitChunk();
+    init.initiateTag = this.localVerificationTag;
+    init.advertisedRwnd = this.advertisedRwnd;
+    init.outboundStreams = this._outboundStreamsCount;
+    init.inboundStreams = this._inboundStreamsMax;
+    init.initialTsn = this.localTsn;
+    this.setExtensions(init.params);
+    this.sendChunk(init);
 
     // # start T1 timer and enter COOKIE-WAIT state
-    this.t1Start(chunk);
+    this.t1Start(init);
     this.setState(SCTP_STATE.COOKIE_WAIT);
   }
 
@@ -1021,6 +1019,10 @@ export class SCTP {
       this.remoteVerificationTag,
       chunk
     );
+    console.log("sent", this.isServer ? "server" : "client", chunk.type);
+    if (chunk.type === 0) {
+      console.log((chunk as DataChunk).userData);
+    }
     this.transport.send(packet);
   }
 
@@ -1052,8 +1054,8 @@ export class SCTP {
   }
 
   abort() {
-    const chunk = new AbortChunk();
-    this.sendChunk(chunk);
+    const abort = new AbortChunk();
+    this.sendChunk(abort);
   }
 
   private removeAllListeners() {
