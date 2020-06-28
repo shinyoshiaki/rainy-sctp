@@ -148,14 +148,15 @@ describe("SctpPacketTest", () => {
     expect(chunk.type).toBe(HeartbeatChunk.type);
     expect(chunk.type).toBe(4);
     expect(chunk.flags).toBe(0);
-    // expect(chunk.params).toEqual([
-    //   [
-    //     1,
-    //     Buffer.from(
-    //       "\xb5o\xaaZvZ\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00{\x10\x00\x00\x004\xeb\x07F\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    //     )
-    //   ]
-    // ]);
+    expect(chunk.params).toEqual([
+      [
+        1,
+        Buffer.from(
+          "\xb5o\xaaZvZ\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00{\x10\x00\x00\x004\xeb\x07F\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+          "binary"
+        ),
+      ],
+    ]);
   });
 
   test("test_parse_reconfig_reset_out", () => {
@@ -165,9 +166,12 @@ describe("SctpPacketTest", () => {
     expect(chunk.type).toBe(ReConfigChunk.type);
     expect(chunk.type).toBe(130);
     expect(chunk.flags).toBe(0);
-    // expect(chunk.params).toEqual([
-    //   [13, Buffer.from("\x8b\xd8\n[\xe4\x8b\xecs\x8b\xd8\n^\x00\x01")]
-    // ]);
+    expect(chunk.params).toEqual([
+      [
+        13,
+        Buffer.from("\x8b\xd8\n[\xe4\x8b\xecs\x8b\xd8\n^\x00\x01", "binary"),
+      ],
+    ]);
 
     const paramData = chunk.params[0][1];
     const param = StreamResetOutgoingParam.parse(paramData);
@@ -185,9 +189,9 @@ describe("SctpPacketTest", () => {
     expect(chunk.type).toBe(ReConfigChunk.type);
     expect(chunk.type).toBe(130);
     expect(chunk.flags).toBe(0);
-    // expect(chunk.params).toEqual([
-    //   [17, Buffer.from("\xca\x02\xf60\x00\x10\x00\x00")]
-    // ]);
+    expect(chunk.params).toEqual([
+      [17, Buffer.from("\xca\x02\xf60\x00\x10\x00\x00", "binary")],
+    ]);
 
     const paramData = chunk.params[0][1];
     const param = StreamAddOutgoingParam.parse(paramData);
@@ -203,9 +207,9 @@ describe("SctpPacketTest", () => {
     expect(chunk.type).toBe(ReConfigChunk.type);
     expect(chunk.type).toBe(130);
     expect(chunk.flags).toBe(0);
-    // expect(chunk.params).toEqual([
-    //   [16, Buffer.from("\x91S\x1fT\x00\x00\x00\x01")]
-    // ]);
+    expect(chunk.params).toEqual([
+      [16, Buffer.from("\x91S\x1fT\x00\x00\x00\x01", "binary")],
+    ]);
 
     const paramData = chunk.params[0][1];
     const param = StreamResetResponseParam.parse(paramData);

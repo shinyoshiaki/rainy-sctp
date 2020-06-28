@@ -62,8 +62,8 @@ const SCTP_STATE_COOKIE = 0x0007;
 const SCTP_STR_RESET_OUT_REQUEST = 0x000d;
 const SCTP_STR_RESET_RESPONSE = 0x0010;
 const SCTP_STR_RESET_ADD_OUT_STREAMS = 0x0011;
-const SCTP_SUPPORTED_CHUNK_EXT = 0x8008;
-const SCTP_PRSCTP_SUPPORTED = 0xc000;
+const SCTP_SUPPORTED_CHUNK_EXT = 0x8008; //32778
+const SCTP_PRSCTP_SUPPORTED = 0xc000; //49152
 
 const SCTP_CAUSE_INVALID_STREAM = 0x0001;
 const SCTP_CAUSE_STALE_COOKIE = 0x0003;
@@ -89,6 +89,7 @@ export class SCTP {
   private localPort = this.port;
   private localVerificationTag = random32();
 
+  remoteExtensions: number[] = [];
   remotePartialReliability = true;
   private remotePort?: number;
   private remoteVerificationTag = 0;
@@ -96,8 +97,8 @@ export class SCTP {
   // inbound
   private advertisedRwnd = 1024 * 1024; // Receiver Window
   private inboundStreams: { [key: number]: InboundStream } = {};
-  private inboundStreamsCount = 0;
-  private inboundStreamsMax = MAX_STREAMS;
+  _inboundStreamsCount = 0;
+  _inboundStreamsMax = MAX_STREAMS;
   private sackNeeded = false;
   private lastReceivedTsn?: number; // Transmission Sequence Number
   private sackDuplicates: number[] = [];
@@ -110,7 +111,7 @@ export class SCTP {
   private flightSize = 0;
   outboundQueue: DataChunk[] = [];
   private outboundStreamSeq: { [key: number]: number } = {};
-  private outboundStreamsCount = MAX_STREAMS;
+  _outboundStreamsCount = MAX_STREAMS;
   private localTsn = random32();
   private lastSackedTsn = tsnMinusOne(this.localTsn);
   private advancedPeerAckTsn = tsnMinusOne(this.localTsn); // acknowledgement
@@ -138,13 +139,19 @@ export class SCTP {
   reconfigRequest?: StreamResetOutgoingParam;
   reconfigQueue: number[] = [];
 
+  isServer = true;
+
   constructor(public transport: Transport, public port = 5000) {
     this.transport.onData = (buf) => {
       this.handleData(buf);
     };
   }
 
-  isServer = true;
+  get maxChannels() {
+    if (this._inboundStreamsCount > 0)
+      return Math.min(this._inboundStreamsCount, this._outboundStreamsCount);
+  }
+
   static client(transport: Transport, port = 5000) {
     const sctp = new SCTP(transport, port);
     sctp.isServer = false;
@@ -221,20 +228,20 @@ export class SCTP {
           this.ssthresh = initChunk.advertisedRwnd;
           this.getExtensions(initChunk.params);
 
-          this.inboundStreamsCount = Math.min(
+          this._inboundStreamsCount = Math.min(
             initChunk.outboundStreams,
-            this.inboundStreamsMax
+            this._inboundStreamsMax
           );
-          this.outboundStreamsCount = Math.min(
-            this.outboundStreamsCount,
+          this._outboundStreamsCount = Math.min(
+            this._outboundStreamsCount,
             initChunk.inboundStreams
           );
 
           const ack = new InitAckChunk();
           ack.initiateTag = this.localVerificationTag;
           ack.advertisedRwnd = this.advertisedRwnd;
-          ack.outboundStreams = this.outboundStreamsCount;
-          ack.inboundStreams = this.inboundStreamsCount;
+          ack.outboundStreams = this._outboundStreamsCount;
+          ack.inboundStreams = this._inboundStreamsCount;
           ack.initialTsn = this.localTsn;
           this.setExtensions(ack.params);
 
@@ -258,12 +265,12 @@ export class SCTP {
           this.ssthresh = data.advertisedRwnd;
           this.getExtensions(data.params);
 
-          this.inboundStreamsCount = Math.min(
+          this._inboundStreamsCount = Math.min(
             data.outboundStreams,
-            this.inboundStreamsMax
+            this._inboundStreamsMax
           );
-          this.outboundStreamsCount = Math.min(
-            this.outboundStreamsCount,
+          this._outboundStreamsCount = Math.min(
+            this._outboundStreamsCount,
             data.inboundStreams
           );
 
@@ -372,12 +379,11 @@ export class SCTP {
   }
 
   private getExtensions(params: [number, Buffer][]) {
-    for (const [k] of params) {
+    for (const [k, v] of params) {
       if (k === SCTP_PRSCTP_SUPPORTED) {
         this.remotePartialReliability = true;
-      } else if (SCTP_SUPPORTED_CHUNK_EXT) {
-        // todo
-        // this.reomtee
+      } else if (k === SCTP_SUPPORTED_CHUNK_EXT) {
+        this.remoteExtensions = [...v];
       }
     }
   }
@@ -418,7 +424,7 @@ export class SCTP {
       case StreamAddOutgoingParam.type:
         {
           const add = param as StreamAddOutgoingParam;
-          this.inboundStreamsCount += add.newStreams;
+          this._inboundStreamsCount += add.newStreams;
           const res = new StreamResetResponseParam(add.requestSequence, 1);
           this.reconfigResponseSeq = add.requestSequence;
           this.sendReconfigParam(res);
@@ -786,10 +792,19 @@ export class SCTP {
     }
   }
 
-  private sendReconfigParam(param: StreamParam) {
+  sendReconfigParam(param: StreamParam) {
     const chunk = new ReconfigChunk();
     chunk.params.push([param.type, param.bytes]);
     this.sendChunk(chunk);
+  }
+
+  sendResetRequest(streamId: number) {
+    const chunk = new DataChunk(3, undefined);
+    chunk.streamId = streamId;
+    this.outboundQueue.push(chunk);
+    if (!this.t3Handle) {
+      this.transmit();
+    }
   }
 
   private flightSizeIncrease(chunk: DataChunk) {
@@ -975,8 +990,8 @@ export class SCTP {
     const chunk = new InitChunk();
     chunk.initiateTag = this.localVerificationTag;
     chunk.advertisedRwnd = this.advertisedRwnd;
-    chunk.outboundStreams = this.outboundStreamsCount;
-    chunk.inboundStreams = this.inboundStreamsMax;
+    chunk.outboundStreams = this._outboundStreamsCount;
+    chunk.inboundStreams = this._inboundStreamsMax;
     chunk.initialTsn = this.localTsn;
     this.setExtensions(chunk.params);
     this.sendChunk(chunk);

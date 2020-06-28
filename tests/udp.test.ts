@@ -1,10 +1,6 @@
 import { createSocket } from "dgram";
 import { createUdpTransport } from "../src/transport";
-
-import { range } from "lodash";
-
-import { sleep } from "../src/helper";
-import { SCTP, WEBRTC_PPID, SCTP_STATE } from "../src";
+import { SCTP, WEBRTC_PPID } from "../src";
 
 test("udp", async (done) => {
   const port = 5555;
@@ -29,17 +25,10 @@ test("udp", async (done) => {
   };
 
   await Promise.all([client.start(5000), server.start(5000)]);
-  await Promise.all([waitForOutcome(client), waitForOutcome(server)]);
+  await Promise.all([
+    client.stateChanged.connected.asPromise(),
+    server.stateChanged.connected.asPromise(),
+  ]);
 
   client.send(0, WEBRTC_PPID.STRING, Buffer.from("ping"));
 });
-
-async function waitForOutcome(sctp: SCTP) {
-  for (const _ of range(100)) {
-    if (sctp.associationState === SCTP_STATE.ESTABLISHED) {
-      break;
-    }
-
-    await sleep(100);
-  }
-}
