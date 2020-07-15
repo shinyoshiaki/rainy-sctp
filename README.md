@@ -1,113 +1,47 @@
-server/client
+SCTP Implementation for TypeScript
+
+# Example
 
 ```typescript
-import { DtlsServer, DtlsClient } from "../../src";
+import { createSocket } from "dgram";
+import { SCTP, WEBRTC_PPID } from "../src";
+import { createUdpTransport } from "../src/transport";
 
-test("e2e/self", (done) => {
-  const word = "self";
-  const server = new DtlsServer({ port: 55557 });
-  server.onData = (data) => {
-    expect(data.toString()).toBe(word);
-    server.send(Buffer.from(word + "_server"));
-  };
-  const client = new DtlsClient({ address: "127.0.0.1", port: 55557 });
-  client.onConnect = () => {
-    client.send(Buffer.from(word));
-  };
-  client.onData = (data) => {
-    expect(data.toString()).toBe(word + "_server");
-    done();
-  };
-});
-```
+const port = 5555;
 
-server/client(OpenSSL)
+const socket = createSocket("udp4");
+socket.bind(port);
 
-```typescript
-import { spawn } from "child_process";
-import { DtlsServer } from "../../src/server";
+const server = SCTP.server(createUdpTransport(socket));
+server.onRecieve = (_, __, data) => {
+  console.log(data.toString());
+  server.send(0, WEBRTC_PPID.STRING, Buffer.from("pong"));
+};
 
-describe("e2e/server", () => {
-  test("openssl", (done) => {
-    const server = new DtlsServer({ port: 55556 });
-    server.onConnect = () => {
-      server.send(Buffer.from("my_dtls_server"));
-    };
+const client = SCTP.client(
+  createUdpTransport(createSocket("udp4"), {
+    port,
+    address: "127.0.0.1",
+  })
+);
+client.onRecieve = (_, __, data) => {
+  console.log(data.toString());
+};
 
-    setTimeout(() => {
-      const client = spawn("openssl", [
-        "s_client",
-        "-dtls1_2",
-        "-connect",
-        "127.0.0.1:55556",
-      ]);
-      client.stdout.setEncoding("ascii");
-      client.stdout.on("data", (data: string) => {
-        if (data.includes("my_dtls_server")) {
-          console.log(data);
-          done();
-          server.close();
-        }
-      });
-    }, 100);
-  });
-});
-```
+await Promise.all([client.start(5000), server.start(5000)]);
+await Promise.all([
+  client.stateChanged.connected.asPromise(),
+  server.stateChanged.connected.asPromise(),
+]);
 
-client/server(OpenSSL)
-
-```typescript
-import { spawn } from "child_process";
-import { DtlsClient } from "../../src/client";
-
-describe("e2e/client", () => {
-  test("openssl", (done) => {
-    const args = [
-      "s_server",
-      "-cert",
-      "./assets/cert.pem",
-      "-key",
-      "./assets/key.pem",
-      "-dtls1_2",
-      "-accept",
-      "127.0.0.1:55555",
-    ];
-
-    const server = spawn("openssl", args);
-    server.stdout.setEncoding("ascii");
-
-    setTimeout(() => {
-      const client = new DtlsClient({ address: "127.0.0.1", port: 55555 });
-      client.onConnect = () => {
-        client.send(Buffer.from("my_dtls"));
-      };
-      server.stdout.on("data", (data: string) => {
-        if (data.includes("my_dtls")) {
-          console.log(data);
-          done();
-          client.close();
-        }
-      });
-    }, 100);
-  });
-});
+client.send(0, WEBRTC_PPID.STRING, Buffer.from("ping"));
 ```
 
 # reference
-
-- RFC5246
-- RFC6347
-- pion/dtls https://github.com/pion/dtls
-- nodertc/dtls https://github.com/nodertc/dtls
-- node-dtls https://github.com/Rantanen/node-dtls
-- node-dtls-client https://github.com/AlCalzone/node-dtls-client
-- OpenSSL
-
-# cert
-
-```sh
-openssl genrsa 2048 > rsa.key
-openssl pkcs8 -in rsa.key -topk8 -out key.pem -nocrypt
-openssl req -new -key key.pem > cert.csr
-openssl x509 -req -days 3650 -signkey key.pem -in cert.csr -out  cert.pem
-```
+- 
+- RFC4960
+- RFC6083
+- RFC6525
+- RFC8261
+- aiortc https://github.com/aiortc/aiortc
+- pion/sctp https://github.com/pion/sctp
