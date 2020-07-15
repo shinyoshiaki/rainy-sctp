@@ -130,12 +130,15 @@ export class SCTP {
 
   // timers
   private rto = SCTP_RTO_INITIAL;
+  // t1 is wait for initAck or cookieAck
   private t1Handle?: any;
   private t1Chunk?: Chunk;
   private t1Failures = 0;
+  // t2 is wait for shutdown
   private t2Handle?: any;
   private t2Chunk?: Chunk;
   private t2Failures = 0;
+  // t3 is wait for data sack
   private t3Handle?: any;
 
   // etc
@@ -456,7 +459,7 @@ export class SCTP {
 
     const receivedTime = Date.now() / 1000;
     this.lastSackedTsn = chunk.cumulativeTsn;
-    const cwndFullyUtilized = this.flightSize >= this.cwnd!;
+    const cwndFullyUtilized = this.flightSize >= this.cwnd;
     let done = 0,
       doneBytes = 0;
 
@@ -508,7 +511,7 @@ export class SCTP {
           break;
         }
         if (!seen.has(sChunk.tsn)) {
-          sChunk.misses! += 1;
+          sChunk.misses++;
           if (sChunk.misses === 3) {
             sChunk.misses = 0;
             if (!this.maybeAbandon(sChunk)) {
@@ -525,19 +528,19 @@ export class SCTP {
     // # adjust congestion window
     if (this.fastRecoveryExit === undefined) {
       if (done && cwndFullyUtilized) {
-        if (this.cwnd! <= this.ssthresh!) {
-          this.cwnd! += Math.min(doneBytes, USERDATA_MAX_LENGTH);
+        if (this.cwnd <= this.ssthresh!) {
+          this.cwnd += Math.min(doneBytes, USERDATA_MAX_LENGTH);
         } else {
           this.partialBytesAcked += doneBytes;
-          if (this.partialBytesAcked >= this.cwnd!) {
-            this.partialBytesAcked -= this.cwnd!;
-            this.cwnd! += USERDATA_MAX_LENGTH;
+          if (this.partialBytesAcked >= this.cwnd) {
+            this.partialBytesAcked -= this.cwnd;
+            this.cwnd += USERDATA_MAX_LENGTH;
           }
         }
       }
       if (loss) {
         this.ssthresh = Math.max(
-          Math.floor(this.cwnd! / 2),
+          Math.floor(this.cwnd / 2),
           4 * USERDATA_MAX_LENGTH
         );
         this.cwnd = this.ssthresh;
@@ -551,7 +554,7 @@ export class SCTP {
 
     if (this.sentQueue.length === 0) {
       this.t3Cancel();
-    } else if (done) {
+    } else if (done > 0) {
       this.t3Restart();
     }
 
@@ -670,16 +673,13 @@ export class SCTP {
       chunk.flags = 0;
       if (!ordered) {
         chunk.flags = SCTP_DATA_UNORDERED;
-      } else {
-        if (fragments === 1) {
-          chunk.flags = 0x03;
-        } else if (fragment === 0) {
-          chunk.flags = SCTP_DATA_FIRST_FRAG;
-        } else if (fragment === fragments - 1) {
-          chunk.flags = SCTP_DATA_LAST_FRAG;
-        }
       }
-
+      if (fragment === 0) {
+        chunk.flags |= SCTP_DATA_FIRST_FRAG;
+      }
+      if (fragment === fragments - 1) {
+        chunk.flags |= SCTP_DATA_LAST_FRAG;
+      }
       chunk.tsn = this.localTsn;
       chunk.streamId = streamId;
       chunk.streamSeq = streamSeq;
@@ -753,7 +753,8 @@ export class SCTP {
       retransmitEarliest = false;
     }
 
-    while (this.outboundQueue.length > 0 && this.flightSize < cwnd) {
+    // for performance
+    while (this.outboundQueue.length > 0) {
       const chunk = this.outboundQueue.shift()!;
       this.sentQueue.push(chunk);
       this.flightSizeIncrease(chunk);
@@ -815,6 +816,7 @@ export class SCTP {
 
   // # timers
 
+  // t1 is wait for initAck or cookieAck
   private t1Cancel() {
     if (this.t1Handle) {
       clearTimeout(this.t1Handle);
@@ -841,6 +843,7 @@ export class SCTP {
     this.t1Handle = setTimeout(this.t1Expired, this.rto * 1000);
   }
 
+  // t2 is wait for shutdown
   private t2Cancel() {
     if (this.t2Handle) {
       clearTimeout(this.t2Handle);
@@ -867,6 +870,7 @@ export class SCTP {
     this.t2Handle = setTimeout(this.t2Expired, this.rto * 1000);
   }
 
+  // t3 is wait for data sack
   private t3Expired = () => {
     this.t3Handle = undefined;
 
@@ -884,7 +888,7 @@ export class SCTP {
     this.partialBytesAcked = 0;
 
     this.ssthresh = Math.max(
-      Math.floor(this.cwnd! / 2),
+      Math.floor(this.cwnd / 2),
       4 * USERDATA_MAX_LENGTH
     );
     this.cwnd = USERDATA_MAX_LENGTH;
@@ -893,11 +897,9 @@ export class SCTP {
   };
 
   private t3Restart() {
-    if (this.t3Handle) {
-      clearTimeout(this.t3Handle);
-      this.t3Handle = undefined;
-    }
-    this.t3Handle = setTimeout(this.t3Expired, this.rto * 1000);
+    this.t3Cancel();
+    // for performance
+    this.t3Handle = setTimeout(this.t3Expired, this.rto);
   }
 
   private t3Start() {
@@ -941,9 +943,8 @@ export class SCTP {
   private maybeAbandon(chunk: DataChunk) {
     if (chunk.abandoned) return true;
     const abandon =
-      (chunk.maxRetransmits && chunk.sentCount! > chunk.maxRetransmits) ||
-      (chunk.expiry && chunk.expiry < Date.now() / 1000);
-
+      (!!chunk.maxRetransmits && chunk.maxRetransmits < chunk.sentCount!) ||
+      (!!chunk.expiry && chunk.expiry < Date.now() / 1000);
     if (!abandon) return false;
 
     const chunkPos = this.sentQueue.findIndex((v) => v.type === chunk.type);
