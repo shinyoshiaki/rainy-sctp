@@ -4,8 +4,7 @@ SCTP Implementation for TypeScript
 
 ```typescript
 import { createSocket } from "dgram";
-import { SCTP, WEBRTC_PPID } from "../src";
-import { createUdpTransport } from "../src/transport";
+import { SCTP, WEBRTC_PPID, createUdpTransport } from "rainy-sctp";
 
 const port = 5555;
 
