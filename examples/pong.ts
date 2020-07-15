@@ -1,9 +1,8 @@
 import { createSocket } from "dgram";
-
 import { range } from "lodash";
+import { SCTP, SCTP_STATE, WEBRTC_PPID } from "../src";
 import { sleep } from "../src/helper";
 import { createUdpTransport } from "../src/transport";
-import { SCTP, WEBRTC_PPID, SCTP_STATE } from "../src";
 
 (async () => {
   const socket = createSocket("udp4");

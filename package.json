@@ -16,14 +16,14 @@
     "build": "tsc",
     "ci": "yarn type && yarn lint && yarn test",
     "client": "ts-node --files --project tsconfig.json examples/client.ts",
-    "fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write src/**/*.ts",
-    "lint": "eslint src/**/*.ts",
+    "fix": "eslint **/*.ts --fix",
+    "format": "prettier --write **/*.ts",
+    "lint": "eslint **/*.ts",
     "publish": "npm publish --access=public",
     "server": "ts-node --files --project tsconfig.json examples/server.ts",
     "test": "yarn type && jest --forceExit",
     "type": "tsc --noEmit -p .",
-    "unused": "organize-imports-cli src/**/*.ts"
+    "unused": "organize-imports-cli **/*.ts"
   },
   "dependencies": {
     "binary-data": "^0.6.0",

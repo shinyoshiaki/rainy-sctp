@@ -1,8 +1,8 @@
-import { SCTP, SCTP_STATE } from "../src";
-import { createUdpTransport } from "../src/transport";
 import { createSocket } from "dgram";
-import { StreamAddOutgoingParam } from "../src/param";
+import { SCTP, SCTP_STATE } from "../src";
 import { sleep } from "../src/helper";
+import { StreamAddOutgoingParam } from "../src/param";
+import { createUdpTransport } from "../src/transport";
 
 describe("sctp", () => {
   test("test_connect_client_limits_streams", async () => {

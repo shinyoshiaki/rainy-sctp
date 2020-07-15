@@ -1,39 +1,39 @@
-import { range } from "lodash";
-import { SCTP_STATE } from "./const";
+import { createHmac, randomBytes } from "crypto";
 import { jspack } from "jspack";
-import { random32, uint32Gte, uint32Gt, uint16Add } from "./utils";
+import { range } from "lodash";
+import { Event } from "rx.mini";
 import {
+  AbortChunk,
   Chunk,
+  CookieAckChunk,
+  CookieEchoChunk,
+  DataChunk,
+  ErrorChunk,
   ForwardTsnChunk,
-  ReConfigChunk,
+  HeartbeatAckChunk,
+  HeartbeatChunk,
+  InitAckChunk,
   InitChunk,
   parsePacket,
-  DataChunk,
-  serializePacket,
-  SackChunk,
-  HeartbeatChunk,
-  HeartbeatAckChunk,
-  AbortChunk,
-  ShutdownChunk,
-  ShutdownAckChunk,
+  ReConfigChunk,
   ReconfigChunk,
-  InitAckChunk,
-  CookieAckChunk,
-  ErrorChunk,
-  CookieEchoChunk,
+  SackChunk,
+  serializePacket,
+  ShutdownAckChunk,
+  ShutdownChunk,
   ShutdownCompleteChunk,
 } from "./chunk";
-import { createHmac, randomBytes } from "crypto";
-import { Transport } from "./transport";
-import { Event } from "rx.mini";
-import { Unpacked, createEventsFromList, enumerate } from "./helper";
+import { SCTP_STATE } from "./const";
+import { createEventsFromList, enumerate, Unpacked } from "./helper";
 import {
-  StreamResetOutgoingParam,
   RECONFIG_PARAM_TYPES,
-  StreamParam,
-  StreamResetResponseParam,
   StreamAddOutgoingParam,
+  StreamParam,
+  StreamResetOutgoingParam,
+  StreamResetResponseParam,
 } from "./param";
+import { Transport } from "./transport";
+import { random32, uint16Add, uint32Gt, uint32Gte } from "./utils";
 
 // # local constants
 const COOKIE_LENGTH = 24;

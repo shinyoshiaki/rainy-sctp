@@ -1,6 +1,6 @@
 import { createSocket } from "dgram";
-import { createUdpTransport } from "../src/transport";
 import { SCTP, WEBRTC_PPID } from "../src";
+import { createUdpTransport } from "../src/transport";
 
 test("udp", async (done) => {
   const port = 5555;
