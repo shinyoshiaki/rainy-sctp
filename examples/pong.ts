@@ -10,7 +10,7 @@ import { createUdpTransport } from "../src/transport";
   const transport = createUdpTransport(socket);
 
   const sctp = SCTP.server(transport);
-  sctp.onRecieve = (...args) => {
+  sctp.onReceive = (...args) => {
     console.log(args[2].toString());
     console.log(args);
   };

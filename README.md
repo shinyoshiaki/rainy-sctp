@@ -13,7 +13,7 @@ const socket = createSocket("udp4");
 socket.bind(port);
 
 const server = SCTP.server(createUdpTransport(socket));
-server.onRecieve = (_, __, data) => {
+server.onReceive = (_, __, data) => {
   console.log(data.toString());
   server.send(0, WEBRTC_PPID.STRING, Buffer.from("pong"));
 };
@@ -24,7 +24,7 @@ const client = SCTP.client(
     address: "127.0.0.1",
   })
 );
-client.onRecieve = (_, __, data) => {
+client.onReceive = (_, __, data) => {
   console.log(data.toString());
 };
 
