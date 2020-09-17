@@ -33,7 +33,7 @@ import {
   StreamResetResponseParam,
 } from "./param";
 import { Transport } from "./transport";
-import { random32, uint16Add, uint32Gt, uint32Gte } from "./utils";
+import { random32, uint16Add, uint16Gt, uint32Gt, uint32Gte } from "./utils";
 
 // # local constants
 const COOKIE_LENGTH = 24;
@@ -417,9 +417,9 @@ export class SCTP {
               delete this.outboundStreamSeq[streamId];
               return streamId;
             });
+            this.onDeleteStreams(streamIds);
             this.reconfigRequest = undefined;
             this.transmitReconfig();
-            this.onDeleteStreams(streamIds);
           }
         }
         break;
@@ -772,9 +772,9 @@ export class SCTP {
 
   transmitReconfig() {
     if (
-      (this.associationState === SCTP_STATE.ESTABLISHED &&
-        this.reconfigQueue.length > 0,
-      !this.reconfigRequest)
+      this.associationState === SCTP_STATE.ESTABLISHED &&
+      this.reconfigQueue.length > 0 &&
+      !this.reconfigRequest
     ) {
       const streams = this.reconfigQueue.slice(0, RECONFIG_MAX_STREAMS);
       this.reconfigQueue = this.reconfigQueue.slice(RECONFIG_MAX_STREAMS);
@@ -786,7 +786,6 @@ export class SCTP {
       );
       this.reconfigRequest = param;
       this.reconfigRequestSeq = tsnPlusOne(this.reconfigRequestSeq);
-
       this.sendReconfigParam(param);
     }
   }
@@ -1085,13 +1084,13 @@ export class InboundStream {
 
   *popMessages(): Generator<[number, number, Buffer]> {
     let pos = 0;
-    let startPos;
+    let startPos = null;
     let expectedTsn: number;
     let ordered: boolean | undefined;
     while (pos < this.reassembly.length) {
       const chunk = this.reassembly[pos];
-      if (!startPos) {
-        ordered = !(chunk.flags && SCTP_DATA_UNORDERED);
+      if (startPos === null) {
+        ordered = !(chunk.flags & SCTP_DATA_UNORDERED);
         if (!(chunk.flags & SCTP_DATA_FIRST_FRAG)) {
           if (ordered) {
             break;
@@ -1100,7 +1099,7 @@ export class InboundStream {
             continue;
           }
         }
-        if (ordered && uint32Gt(chunk.streamSeq, this.sequenceNumber)) {
+        if (ordered && uint16Gt(chunk.streamSeq, this.sequenceNumber)) {
           break;
         }
         expectedTsn = chunk.tsn;
@@ -1115,13 +1114,18 @@ export class InboundStream {
         }
       }
 
-      if (chunk.flags && SCTP_DATA_LAST_FRAG) {
-        const userData = Buffer.from(
-          this.reassembly
-            .slice(startPos, pos + 1)
-            .map((c) => c.userData)
-            .join("")
-        );
+      if (chunk.flags & SCTP_DATA_LAST_FRAG) {
+        const arr = this.reassembly
+          .slice(startPos, pos + 1)
+          .map((c) => c.userData)
+          .reduce((acc, cur) => {
+            acc.push(cur);
+            acc.push(Buffer.from(""));
+            return acc;
+          }, [] as Buffer[]);
+        arr.pop();
+        const userData = Buffer.concat(arr);
+
         this.reassembly = [
           ...this.reassembly.slice(0, startPos),
           ...this.reassembly.slice(pos + 1),
