@@ -73,9 +73,9 @@ const SCTPConnectionStates = [
 type SCTPConnectionState = Unpacked<typeof SCTPConnectionStates>;
 
 export class SCTP {
-  stateChanged: { [key in SCTPConnectionState]: Event } = createEventsFromList(
-    SCTPConnectionStates
-  );
+  stateChanged: {
+    [key in SCTPConnectionState]: Event<[]>;
+  } = createEventsFromList(SCTPConnectionStates);
 
   associationState = SCTP_STATE.CLOSED;
   started = false;
@@ -85,7 +85,7 @@ export class SCTP {
 
   private localPartialReliability = true;
   private localPort = this.port;
-  private localVerificationTag = random32();
+  private localVerificationTag = Number(random32());
 
   remoteExtensions: number[] = [];
   remotePartialReliability = true;
@@ -111,7 +111,7 @@ export class SCTP {
   outboundQueue: DataChunk[] = [];
   private outboundStreamSeq: { [key: number]: number } = {};
   _outboundStreamsCount = MAX_STREAMS;
-  private localTsn = random32();
+  private localTsn = Number(random32());
   private lastSackedTsn = tsnMinusOne(this.localTsn);
   private advancedPeerAckTsn = tsnMinusOne(this.localTsn); // acknowledgement
   private partialBytesAcked = 0;
@@ -1047,6 +1047,9 @@ export class SCTP {
       this.abort();
     }
     this.setState(SCTP_STATE.CLOSED);
+    clearTimeout(this.t1Handle);
+    clearTimeout(this.t2Handle);
+    clearTimeout(this.t3Handle);
   }
 
   abort() {
